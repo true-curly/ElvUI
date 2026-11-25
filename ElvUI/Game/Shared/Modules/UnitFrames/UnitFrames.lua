@@ -1906,6 +1906,54 @@ do
 		end
 	end
 
+	-- Forever's gamepad opens the target's menu (X) through Blizzard's TargetFrame, which fails once the
+	-- frame is hidden. There it keeps working, under a holder with no alpha, and without mouse input
+	-- so it can't be clicked or show tooltips where it sits. Protected frames change only out of combat.
+	-- Only events run this, never a hook on the frame, which would run inside Blizzard's own calls (such
+	-- as the gamepad bar's ClearTarget), where its state reads back as secret values.
+	local TargetHolder
+
+	local function MuteTargetMouse(frame, combat)
+		if not combat then
+			frame:EnableMouse(false)
+		else
+			local protected = frame:IsProtected()
+			if not ((issecretvalue and issecretvalue(protected)) or protected) then
+				frame:EnableMouse(false)
+			end
+		end
+
+		for _, child in next, { frame:GetChildren() } do
+			MuteTargetMouse(child, combat)
+		end
+	end
+
+	local function MuteTargetFrame()
+		local frame = _G.TargetFrame
+		if not frame or TargetHolder then return end
+
+		TargetHolder = CreateFrame('Frame', nil, _G.UIParent)
+		TargetHolder:SetAllPoints()
+		TargetHolder:SetAlpha(0)
+
+		frame:SetParent(TargetHolder)
+		hooksecurefunc(frame, 'SetParent', function(_, parent)
+			if parent ~= TargetHolder and not InCombatLockdown() then
+				frame:SetParent(TargetHolder)
+			end
+		end)
+
+		local function Mute() MuteTargetMouse(frame, InCombatLockdown()) end
+		Mute()
+
+		-- aura buttons are made as they are needed
+		local watcher = CreateFrame('Frame')
+		watcher:RegisterEvent('PLAYER_TARGET_CHANGED')
+		watcher:RegisterEvent('PLAYER_REGEN_ENABLED')
+		watcher:RegisterUnitEvent('UNIT_AURA', 'target')
+		watcher:SetScript('OnEvent', Mute)
+	end
+
 	function ElvUF:DisableBlizzard(unit)
 		if not unit then return end
 
@@ -1950,7 +1998,12 @@ do
 			elseif disable.player and unit == 'pet' then
 				HideFrame(_G.PetFrame)
 			elseif disable.target and unit == 'target' then
-				HideFrame(_G.TargetFrame)
+				if E.Forever then
+					MuteTargetFrame()
+				else
+					HideFrame(_G.TargetFrame)
+				end
+
 				HideFrame(_G.ComboFrame)
 			elseif disable.focus and unit == 'focus' then
 				HideFrame(_G.FocusFrame)
