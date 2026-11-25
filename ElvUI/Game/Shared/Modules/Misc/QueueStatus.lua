@@ -129,7 +129,13 @@ function M:HandleQueueStatus(creation)
 	local db = E.db.general.queueStatus
 	queueButton:SetFrameStrata(db.frameStrata)
 	queueButton:SetFrameLevel(db.frameLevel)
-	queueButton:SetPoint('CENTER') -- trigger the hook
+	-- move straight onto our holder; a bare SetPoint('CENTER') anchors to the current
+	-- Blizzard parent first, which can fail with an anchor family connection error
+	if _G.QueueStatusButton and queueButton:GetParent() ~= M.QueueStatus then
+		queueButton:SetParent(M.QueueStatus)
+	end
+	queueButton:ClearAllPoints()
+	queueButton:Point('CENTER', M.QueueStatus)
 	queueButton:SetScale(1) -- trigger the scale
 
 	local queueDisplay = M.QueueStatusDisplay
