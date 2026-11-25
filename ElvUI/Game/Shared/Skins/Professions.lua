@@ -310,7 +310,8 @@ local function HandleOrderView(frame)
 	HandleRankBar(frame.RankBar)
 	ReskinOutputLog(frame.CraftingOutputLog)
 
-	if frame.SetOverrideCastBarActive ~= E.noop then
+	-- Forever: Blizzard calls SetOverrideCastBarActive while starting a craft; an ElvUI-owned method there taints the craft, and the gamepad hold-to-Create All (no hardware event) is then blocked
+	if not E.Forever and frame.SetOverrideCastBarActive ~= E.noop then
 		frame.SetOverrideCastBarActive = E.noop
 	end
 
@@ -527,7 +528,8 @@ function S:Blizzard_Professions()
 	HandleSchematicForm(CraftingPage.SchematicForm)
 	HandleInputBox(CraftingPage.CreateMultipleInputBox)
 
-	if CraftingPage.SetOverrideCastBarActive ~= E.noop then
+	-- Forever: Blizzard calls SetOverrideCastBarActive while starting a craft; an ElvUI-owned method there taints the craft, and the gamepad hold-to-Create All (no hardware event) is then blocked
+	if not E.Forever and CraftingPage.SetOverrideCastBarActive ~= E.noop then
 		CraftingPage.SetOverrideCastBarActive = E.noop
 	end
 
