@@ -159,6 +159,23 @@ local function UpdateSpellBookAttic(frame)
 	frame.SettingsDropdown:Point('TOPRIGHT', -30, -23)
 end
 
+-- true if frame (or anything it is anchored to) is anchored to target
+local function IsAnchoredTo(frame, target, seen)
+	if not frame or not frame.GetNumPoints then return false end
+	seen = seen or {}
+	if seen[frame] then return false end
+	seen[frame] = true
+	for i = 1, frame:GetNumPoints() do
+		local _, relativeTo = frame:GetPoint(i)
+		if relativeTo then
+			if relativeTo == target or IsAnchoredTo(relativeTo, target, seen) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 function S:Blizzard_PlayerSpells()
 	local PlayerSpellsFrame = _G.PlayerSpellsFrame
 	S:HandlePortraitFrame(PlayerSpellsFrame)
@@ -222,8 +239,11 @@ function S:Blizzard_PlayerSpells()
 		S:HandleNextPrevButton(SearchOptions, 'down', nil, true)
 
 		SearchOptions:SetTemplate()
-		SearchOptions:ClearAllPoints()
-		SearchOptions:Point('LEFT', TalentsFrame.SearchBox, 'RIGHT', 3, 0)
+		-- the SearchBox may already be anchored to this dropdown; re-anchoring would loop
+		if not IsAnchoredTo(TalentsFrame.SearchBox, SearchOptions) then
+			SearchOptions:ClearAllPoints()
+			SearchOptions:Point('LEFT', TalentsFrame.SearchBox, 'RIGHT', 3, 0)
+		end
 
 		SearchOptions.Arrow:SetAlpha(0)
 	end
