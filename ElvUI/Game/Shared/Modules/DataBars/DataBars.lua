@@ -202,10 +202,31 @@ function DB:Initialize()
 
 	-- hide Blizzard's XP/reputation bars here, since the ActionBars module (which also does this)
 	-- does not load in gamepad mode; the containers are what the bars are drawn in on Forever
-	for _, name in next, { 'StatusTrackingBarManager', 'MainStatusTrackingBarContainer', 'SecondaryStatusTrackingBarContainer' } do
+	if _G.StatusTrackingBarManager then
+		_G.StatusTrackingBarManager:Kill()
+	end
+
+	-- The containers are Edit Mode systems and call methods on their parent, so they keep it: moving them
+	-- to E.HiddenFrame broke Edit Mode, and a holder with stand-in methods tainted it (Blizzard's code then
+	-- ran ElvUI's functions). Instead they hide again whenever Blizzard shows them outside Edit Mode.
+	local function KeepHidden(frame)
+		if not frame.isInEditMode then
+			frame:Hide()
+		end
+	end
+
+	local function KeepHiddenShown(frame, shown)
+		if shown then
+			KeepHidden(frame)
+		end
+	end
+
+	for _, name in next, { 'MainStatusTrackingBarContainer', 'SecondaryStatusTrackingBarContainer' } do
 		local frame = _G[name]
 		if frame then
-			frame:Kill()
+			frame:Hide()
+			hooksecurefunc(frame, 'Show', KeepHidden)
+			hooksecurefunc(frame, 'SetShown', KeepHiddenShown)
 		end
 	end
 
