@@ -748,16 +748,45 @@ function A:CreateAuraHeader(filter)
 	return header
 end
 
+-- Forever's gamepad radial asks BuffFrame:HasActiveAura(), which reads auraInfo, filled in from the frame's
+-- own events. So there the frames keep their events and their parent (they are Edit Mode systems), and
+-- hide again whenever Blizzard shows them outside Edit Mode. Only hooks, so nothing of ElvUI's is read or
+-- called from Blizzard's code.
+local function KeepHidden(frame)
+	if not frame.isInEditMode then
+		frame:Hide()
+	end
+end
+
+local function KeepHiddenShown(frame, shown)
+	if shown then
+		KeepHidden(frame)
+	end
+end
+
+local function HideBlizzardAuras(frame)
+	if not frame then return end
+
+	frame:Hide()
+	hooksecurefunc(frame, 'Show', KeepHidden)
+	hooksecurefunc(frame, 'SetShown', KeepHiddenShown)
+end
+
 function A:Initialize()
 	if E.private.auras.disableBlizzard then
-		_G.BuffFrame:Kill()
+		if E.Forever then
+			HideBlizzardAuras(_G.BuffFrame)
+			HideBlizzardAuras(_G.DebuffFrame)
+		else
+			_G.BuffFrame:Kill()
 
-		if E.Modern then -- edit mode error
-			_G.BuffFrame.numHideableBuffs = 0
-		end
+			if E.Modern then -- edit mode error
+				_G.BuffFrame.numHideableBuffs = 0
+			end
 
-		if _G.DebuffFrame then
-			_G.DebuffFrame:Kill()
+			if _G.DebuffFrame then
+				_G.DebuffFrame:Kill()
+			end
 		end
 	end
 
