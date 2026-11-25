@@ -200,6 +200,15 @@ function DB:Initialize()
 	DB.Initialized = true
 	DB.StatusBars = {}
 
+	-- hide Blizzard's XP/reputation bars here, since the ActionBars module (which also does this)
+	-- does not load in gamepad mode; the containers are what the bars are drawn in on Forever
+	for _, name in next, { 'StatusTrackingBarManager', 'MainStatusTrackingBarContainer', 'SecondaryStatusTrackingBarContainer' } do
+		local frame = _G[name]
+		if frame then
+			frame:Kill()
+		end
+	end
+
 	DB:CreateAll()
 	DB:UpdateAll()
 
