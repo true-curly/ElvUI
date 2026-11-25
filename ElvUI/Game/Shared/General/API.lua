@@ -1400,7 +1400,9 @@ do -- complicated backwards compatible menu
 	end
 
 	function E:ComplicatedMenu(menuList, menuFrame, anchor, x, y, displayMode, autoHideDelay)
-		if _G.EasyMenu then
+		if E.IsGamepadActive and E.GamepadMenu_Show then -- Forever: Blizzard's menu taints the gamepad UI when opened by ElvUI
+			E:GamepadMenu_Show(menuList, menuFrame, anchor, x, y)
+		elseif _G.EasyMenu then
 			_G.EasyMenu(menuList, menuFrame, anchor, x, y, displayMode, autoHideDelay)
 		else
 			_G.MenuUtil.CreateContextMenu(menuFrame, function(_, root) HandleMenuList(root, menuList, nil, 1) end)

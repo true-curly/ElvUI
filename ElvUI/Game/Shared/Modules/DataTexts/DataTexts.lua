@@ -972,7 +972,9 @@ function DT:BuildTables()
 end
 
 function DT:CloseMenus()
-	if E.Modern or E.Mists then
+	if E.IsGamepadActive and E.GamepadMenu_Close then -- Forever: our menus are not Blizzard's in gamepad mode
+		E:GamepadMenu_Close()
+	elseif E.Modern or E.Mists then
 		local manager = _G.Menu.GetManager()
 		if manager then
 			manager:CloseMenus()

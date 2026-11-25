@@ -4,6 +4,8 @@ local AB = E:GetModule('ActionBars')
 
 local _G = _G
 local next = next
+local type = type
+local wipe = wipe
 local sort = sort
 local ipairs = ipairs
 local unpack = unpack
@@ -15,6 +17,7 @@ local utf8sub = string.utf8sub
 local CloseAllWindows = CloseAllWindows
 local CloseMenus = CloseMenus
 local CreateFrame = CreateFrame
+local C_Minimap = C_Minimap
 local GetMinimapZoneText = GetMinimapZoneText
 local HideUIPanel = HideUIPanel
 local InCombatLockdown = InCombatLockdown
@@ -265,8 +268,61 @@ function M:Minimap_EnterLeave(minimap, show)
 	end
 end
 
+-- Forever gamepad mode: Blizzard's tracking menu opened from here runs its gamepad code with ElvUI's taint
+-- (SmartNavigation.lua:1042 errors, and "ElvUI tried to call the protected function
+-- SetPreferredGamepadInteractTarget()" when it closes), so list the tracking types in ElvUI's gamepad menu
+local trackingMenu = {}
+
+local function TrackingInfo(index)
+	local info, texture, active = C_Minimap.GetTrackingInfo(index)
+	if type(info) == 'table' then
+		return info.name, info.texture, info.active
+	end
+
+	return info, texture, active
+end
+
+local function TrackingChecked(list)
+	local _, _, active = TrackingInfo(list.arg1)
+	return active
+end
+
+local function TrackingFunc(_, index)
+	local _, _, active = TrackingInfo(index)
+	C_Minimap.SetTracking(index, not active)
+end
+
+local function BuildTrackingMenu()
+	wipe(trackingMenu)
+
+	if not (C_Minimap and C_Minimap.GetNumTrackingTypes and C_Minimap.GetTrackingInfo and C_Minimap.SetTracking) then
+		return trackingMenu
+	end
+
+	tinsert(trackingMenu, { text = _G.TRACKING, isTitle = true })
+
+	for index = 1, C_Minimap.GetNumTrackingTypes() do
+		local name, texture = TrackingInfo(index)
+		if name then
+			tinsert(trackingMenu, { text = name, icon = texture, arg1 = index, checked = TrackingChecked, func = TrackingFunc, keepShownOnClick = true })
+		end
+	end
+
+	return trackingMenu
+end
+
 function M:Minimap_OnMouseDown(btn)
 	menuFrame:Hide()
+
+	if E.IsGamepadActive and E.GamepadMenu_Show and btn == 'RightButton' and not IsShiftKeyDown() then
+		local menu = BuildTrackingMenu()
+		if #menu > 1 then
+			local position = M.MapHolder.mover:GetPoint()
+			E:GamepadMenu_Show(menu, nil, 'cursor', position:match('LEFT') and 0 or -160, 0)
+		end
+
+		return
+	end
 
 	local position = M.MapHolder.mover:GetPoint()
 	if btn == 'MiddleButton' or (btn == 'RightButton' and IsShiftKeyDown()) then
