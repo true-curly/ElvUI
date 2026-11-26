@@ -157,6 +157,23 @@ local function UpdateMerchantInfo()
 	end
 end
 
+-- Forever: lay out the item list once. Moving the item, money and repair frames from
+-- ElvUI code after every merchant update (each purchase) taints the gamepad UI,
+-- and SmartNavigation then gets SetPreferredGamepadInteractTarget() blocked.
+local function SetupMerchantItemsOnce()
+	local numItems = max(_G.MERCHANT_ITEMS_PER_PAGE, _G.BUYBACK_ITEMS_PER_PAGE)
+	for i = 1, numItems do
+		if _G['MerchantItem'..i] then
+			HandleMerchantItem(i)
+
+			local button = _G['MerchantItem'..i..'ItemButton']
+			local money = _G['MerchantItem'..i..'MoneyFrame']
+			money:ClearAllPoints()
+			money:Point('BOTTOMLEFT', button, 'BOTTOMRIGHT', 5, -3)
+		end
+	end
+end
+
 local function SetItemButtonScale(button, scale)
 	if scale ~= 1 then
 		button.Count:SetScale(1)
@@ -171,8 +188,15 @@ local function SetItemButtonAnchorPoint(button, point, x, y)
 end
 
 function S:MerchantFrame()
-	S:HandlePortraitFrame(_G.MerchantFrame)
-	_G.MerchantFrame:Width(360)
+	if E.Forever then
+		-- Forever: don't mix the backdrop into MerchantFrame or resize it. The panel manager reads MerchantFrame
+		-- when it opens and closes, and ElvUI's fields and size there taint the gamepad UI
+		-- (taint.log: SetPreferredGamepadInteractTarget blocked from PlayerInteractionFrameManager ShowFrame/HideFrame).
+		S:HandlePortraitFrame(_G.MerchantFrame, true)
+	else
+		S:HandlePortraitFrame(_G.MerchantFrame)
+		_G.MerchantFrame:Width(360)
+	end
 
 	_G.MerchantMoneyBg:StripTextures()
 	_G.MerchantMoneyInset:StripTextures()
@@ -185,7 +209,7 @@ function S:MerchantFrame()
 	end
 
 	-- Center the columns on the frame
-	_G.MerchantItem1:Point('TOPLEFT', _G.MerchantFrame, 'TOPLEFT', 22, -65)
+	_G.MerchantItem1:Point('TOPLEFT', _G.MerchantFrame, 'TOPLEFT', E.Forever and 11 or 22, -65) -- Forever keeps Blizzard's narrower frame
 
 	-- Skin tabs
 	for i = 1, 2 do
@@ -233,13 +257,17 @@ function S:MerchantFrame()
 	_G.MerchantNextPageButton:ClearAllPoints() -- Monitor this
 	_G.MerchantNextPageButton:Point('LEFT', _G.MerchantPageText, 'RIGHT', 100, 4)
 
-	if E.Modern then -- setup some hooks to fix placement
-		hooksecurefunc('MerchantFrame_UpdateRepairButtons', UpdateRepairButtons)
-	else -- classic merchant has no quality borders
-		hooksecurefunc('MerchantFrame_UpdateBuybackInfo', UpdateBuybackInfo)
-	end
+	if E.Forever then -- Forever: no layout hooks, they taint the gamepad UI on every purchase
+		SetupMerchantItemsOnce()
+	else
+		if E.Modern then -- setup some hooks to fix placement
+			hooksecurefunc('MerchantFrame_UpdateRepairButtons', UpdateRepairButtons)
+		else -- classic merchant has no quality borders
+			hooksecurefunc('MerchantFrame_UpdateBuybackInfo', UpdateBuybackInfo)
+		end
 
-	hooksecurefunc('MerchantFrame_UpdateMerchantInfo', UpdateMerchantInfo)
+		hooksecurefunc('MerchantFrame_UpdateMerchantInfo', UpdateMerchantInfo)
+	end
 
 	-- handle buyback count by the item button hooks
 	_G.MerchantBuyBackItemItemButton.Count:SetScale(1)

@@ -111,7 +111,9 @@ function S:BlizzardMiscFrames()
 		_G.AutoCompleteBox:HookScript('OnShow', FixAutoCompleteLevel)
 	end
 
-	S:HandleButton(_G.StaticPopup1ExtraButton)
+	if not E.Forever then -- Forever: skinning Blizzard's popups taints the gamepad UI when they close (e.g. destroy item)
+		S:HandleButton(_G.StaticPopup1ExtraButton)
+	end
 
 	-- reskin all esc/menu buttons
 	if not E.OtherAddons.ConsolePort then
@@ -159,8 +161,10 @@ function S:BlizzardMiscFrames()
 	end
 
 	-- reskin popup buttons
-	for i = 1, E.MAX_STATIC_POPUPS do
-		S:HandleStaticPopup(_G['StaticPopup'..i])
+	if not E.Forever then -- see StaticPopup1ExtraButton above
+		for i = 1, E.MAX_STATIC_POPUPS do
+			S:HandleStaticPopup(_G['StaticPopup'..i])
+		end
 	end
 
 	-- skin return to graveyard button

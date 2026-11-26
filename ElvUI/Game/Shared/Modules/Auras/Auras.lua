@@ -749,27 +749,58 @@ function A:CreateAuraHeader(filter)
 end
 
 -- Forever's gamepad radial asks BuffFrame:HasActiveAura(), which reads auraInfo, filled in from the frame's
--- own events. So there the frames keep their events and their parent (they are Edit Mode systems), and
--- hide again whenever Blizzard shows them outside Edit Mode. Only hooks, so nothing of ElvUI's is read or
--- called from Blizzard's code.
-local function KeepHidden(frame)
-	if not frame.isInEditMode then
-		frame:Hide()
+-- own events. So there the frames keep their events and stay shown, under a holder with no alpha, and
+-- without mouse input so they can't be clicked or show tooltips where they sit. Never hide them, and never
+-- hook them: a Hide() from ElvUI (even inside a hook) runs Blizzard's OnHide with ElvUI's taint, which
+-- reaches the gamepad focus code (ADDON_ACTION_FORBIDDEN SetPreferredGamepadInteractTarget) and breaks
+-- BuffFrame's own updates (secret expirationTime compare). Only ElvUI's own events touch them.
+local AuraHolder
+local MutedAuraFrames = {}
+
+local function MuteAuraMouse(frame, combat)
+	if not combat then
+		frame:EnableMouse(false)
+	else
+		local protected = frame:IsProtected()
+		if not ((issecretvalue and issecretvalue(protected)) or protected) then
+			frame:EnableMouse(false)
+		end
+	end
+
+	for _, child in next, { frame:GetChildren() } do
+		MuteAuraMouse(child, combat)
 	end
 end
 
-local function KeepHiddenShown(frame, shown)
-	if shown then
-		KeepHidden(frame)
+local function MuteAuraFrames()
+	local combat = InCombatLockdown()
+	for frame in next, MutedAuraFrames do
+		if not combat and frame:GetParent() ~= AuraHolder then
+			frame:SetParent(AuraHolder) -- holder is shown, so visibility doesn't change
+		end
+
+		MuteAuraMouse(frame, combat)
 	end
 end
 
 local function HideBlizzardAuras(frame)
 	if not frame then return end
 
-	frame:Hide()
-	hooksecurefunc(frame, 'Show', KeepHidden)
-	hooksecurefunc(frame, 'SetShown', KeepHiddenShown)
+	if not AuraHolder then
+		AuraHolder = CreateFrame('Frame', nil, _G.UIParent)
+		AuraHolder:SetAllPoints()
+		AuraHolder:SetAlpha(0)
+
+		-- aura buttons are made as they are needed
+		local watcher = CreateFrame('Frame')
+		watcher:RegisterEvent('PLAYER_ENTERING_WORLD')
+		watcher:RegisterEvent('PLAYER_REGEN_ENABLED')
+		watcher:RegisterUnitEvent('UNIT_AURA', 'player')
+		watcher:SetScript('OnEvent', MuteAuraFrames)
+	end
+
+	MutedAuraFrames[frame] = true
+	MuteAuraFrames()
 end
 
 function A:Initialize()

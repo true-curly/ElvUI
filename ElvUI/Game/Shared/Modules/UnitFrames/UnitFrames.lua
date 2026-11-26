@@ -1813,6 +1813,116 @@ do
 		end
 	end
 
+	-- Forever: when a group forms, Blizzard sets up its party and raid frames, and the Show, SetShown,
+	-- SetUpFrame and SetUnit hooks below would run inside those Blizzard calls. The gamepad UI then fails
+	-- with ADDON_ACTION_FORBIDDEN (SetPreferredGamepadInteractTarget, execution tainted by ElvUI).
+	-- There the frames are moved under a shown holder with no alpha, so their visibility never changes
+	-- (a Hide() or a move under a hidden parent would run Blizzard's OnHide with ElvUI's taint), their
+	-- events are unregistered and their mouse is turned off. Only from ElvUI's own events, never from a
+	-- hook on Blizzard's frames or functions. Protected frames change only out of combat.
+	local ForeverGroupFrames = {} -- container name = member name format and count
+	local ForeverWatcher, ForeverPending, ForeverHolder
+
+	local ForeverElements = { 'healthBar', 'healthbar', 'HealthBar', 'manabar', 'ManaBar', 'castBar', 'spellbar', 'petFrame', 'PetFrame', 'powerBarAlt', 'PowerBarAlt', 'CastingBarFrame', 'CcRemoverFrame', 'DebuffFrame', 'BuffFrame', 'AurasFrame', 'totFrame' }
+
+	local function ForeverMouseOff(frame)
+		frame:EnableMouse(false)
+
+		for _, child in next, { frame:GetChildren() } do
+			ForeverMouseOff(child)
+		end
+	end
+
+	local function ForeverSilence(frame, reparent)
+		if not frame then return end
+
+		if reparent then
+			if not ForeverHolder then
+				ForeverHolder = CreateFrame('Frame', nil, _G.UIParent)
+				ForeverHolder:SetAllPoints()
+				ForeverHolder:SetAlpha(0)
+			end
+
+			if frame:GetParent() ~= ForeverHolder then
+				frame:SetParent(ForeverHolder)
+			end
+		end
+
+		frame:UnregisterAllEvents()
+
+		local container = frame.HealthBarsContainer
+		if container and container.healthBar then
+			container.healthBar:UnregisterAllEvents()
+		end
+
+		for _, key in next, ForeverElements do
+			local element = frame[key]
+			if type(element) == 'table' and element.UnregisterAllEvents then
+				element:UnregisterAllEvents()
+			end
+		end
+
+		ForeverMouseOff(frame)
+	end
+
+	function UF:DisableBlizzard_ForeverSweep()
+		ForeverPending = nil
+
+		if InCombatLockdown() then return end
+
+		for name, members in next, ForeverGroupFrames do
+			local container = _G[name]
+			if container then
+				ForeverSilence(container, true)
+
+				if members.pool then
+					local pool = container[members.pool]
+					if pool then
+						for child in pool:EnumerateActive() do
+							ForeverSilence(child)
+						end
+					end
+				end
+
+				for _, info in ipairs(members) do
+					if info.groups then
+						for group = 1, info.groups do
+							for index = 1, info.count do
+								ForeverSilence(_G[format(info.name, group, index)])
+							end
+						end
+					else
+						for index = 1, info.count do
+							ForeverSilence(_G[format(info.name, index)])
+						end
+					end
+				end
+			end
+		end
+	end
+
+	local function ForeverQueueSweep()
+		if ForeverPending then return end
+		ForeverPending = true
+
+		-- wait for Blizzard's own handlers of the same event to finish
+		C_Timer.After(0, UF.DisableBlizzard_ForeverSweep)
+	end
+
+	function UF:DisableBlizzard_ForeverWatch(name, members)
+		ForeverGroupFrames[name] = members
+
+		if not ForeverWatcher then
+			ForeverWatcher = CreateFrame('Frame')
+			ForeverWatcher:RegisterEvent('PLAYER_ENTERING_WORLD')
+			ForeverWatcher:RegisterEvent('GROUP_ROSTER_UPDATE')
+			ForeverWatcher:RegisterEvent('PLAYER_REGEN_ENABLED')
+			ForeverWatcher:SetScript('OnEvent', ForeverQueueSweep)
+		end
+
+		UF:DisableBlizzard_ForeverSweep()
+	end
+
 	function UF:DisableBlizzard()
 		local disable = E.private.unitframe.disabledBlizzardFrames
 		if disable.party or disable.raid then
@@ -1828,12 +1938,23 @@ do
 
 		-- shutdown some background updates on party unitframes
 		if disable.party then
-			UF:DisableBlizzard_HideFrame(_G.CompactPartyFrame, '^CompactPartyFrameMember%d+$')
+			if E.Forever then
+				UF:DisableBlizzard_ForeverWatch('CompactPartyFrame', { { name = 'CompactPartyFrameMember%d', count = 5 } })
+			else
+				UF:DisableBlizzard_HideFrame(_G.CompactPartyFrame, '^CompactPartyFrameMember%d+$')
+			end
 		end
 
 		-- also handle it for background raid frames and the raid utility
 		if disable.raid then
-			UF:DisableBlizzard_HideFrame(_G.CompactRaidFrameContainer, '^CompactRaidGroup%d+Member%d+$')
+			if E.Forever then
+				UF:DisableBlizzard_ForeverWatch('CompactRaidFrameContainer', {
+					{ name = 'CompactRaidGroup%dMember%d', groups = 8, count = 5 },
+					{ name = 'CompactRaidFrame%d', count = 40 }
+				})
+			else
+				UF:DisableBlizzard_HideFrame(_G.CompactRaidFrameContainer, '^CompactRaidGroup%d+Member%d+$')
+			end
 
 			-- Raid Utility
 			if _G.CompactRaidFrameManager then
@@ -2019,7 +2140,9 @@ do
 				disabledParty = true
 
 				local frame = _G.PartyFrame
-				if frame then -- Retail
+				if frame and E.Forever then -- no SetParent hook, see UF:DisableBlizzard_ForeverWatch
+					UF:DisableBlizzard_ForeverWatch('PartyFrame', { pool = 'PartyMemberFramePool' })
+				elseif frame then -- Retail
 					HideFrame(frame, 1)
 
 					for child in frame.PartyMemberFramePool:EnumerateActive() do
@@ -2486,9 +2609,11 @@ function UF:Initialize()
 
 	UF:DisableBlizzard()
 
-	hooksecurefunc('CompactRaidGroup_InitializeForGroup', UF.DisableBlizzard_InitializeForGroup)
-	hooksecurefunc('CompactUnitFrame_SetUpFrame', UF.DisableBlizzard_SetUpFrame)
-	hooksecurefunc('CompactUnitFrame_SetUnit', UF.DisableBlizzard_SetUnit)
+	if not E.Forever then -- these run inside Blizzard's group frame setup, see UF:DisableBlizzard_ForeverWatch
+		hooksecurefunc('CompactRaidGroup_InitializeForGroup', UF.DisableBlizzard_InitializeForGroup)
+		hooksecurefunc('CompactUnitFrame_SetUpFrame', UF.DisableBlizzard_SetUpFrame)
+		hooksecurefunc('CompactUnitFrame_SetUnit', UF.DisableBlizzard_SetUnit)
+	end
 
 	if _G.Clique and _G.Clique.BLACKLIST_CHANGED then
 		hooksecurefunc(_G.Clique, 'BLACKLIST_CHANGED', UF.UpdateRegisteredClicks)

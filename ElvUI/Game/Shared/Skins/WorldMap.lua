@@ -228,27 +228,32 @@ local function SkinMainline()
 	-- Quest Frames
 	local QuestMapFrame = _G.QuestMapFrame
 	QuestMapFrame.VerticalSeparator:Hide()
-	QuestMapFrame:SetScript('OnHide', data.QuestMapHide)
+	if not E.Forever then -- Forever: replacing the OnHide script runs ElvUI code while the map closes, which taints the gamepad UI (SetPreferredGamepadInteractTarget)
+		QuestMapFrame:SetScript('OnHide', data.QuestMapHide)
+	end
 
 	local QuestsFrame = QuestMapFrame.QuestsFrame
 	local DetailsFrame = QuestMapFrame.DetailsFrame
 	local RewardsContainer = DetailsFrame.RewardsFrameContainer
 
-	S:HandleButton(DetailsFrame.AbandonButton, true)
-	DetailsFrame.ShareButton:StripTextures() -- strip the Blizz Art around from it
-	S:HandleButton(DetailsFrame.ShareButton, true)
-	S:HandleButton(DetailsFrame.TrackButton, true)
-
 	DetailsFrame.BorderFrame:SetAlpha(0)
-	DetailsFrame.AbandonButton:SetFrameLevel(5)
-	DetailsFrame.ShareButton:SetFrameLevel(5)
-	DetailsFrame.TrackButton:SetFrameLevel(5)
-	DetailsFrame.TrackButton:Width(95)
 
 	local BackFrame = DetailsFrame.BackFrame
-	BackFrame:StripTextures()
-	BackFrame.BackButton:SetFrameLevel(5)
-	S:HandleButton(BackFrame.BackButton, true)
+	if not E.Forever then -- Forever: ElvUI OnEnter/OnLeave/OnDisable hooks on the gamepad-focused Abandon/Share/Track/Back buttons taint the gamepad UI (abandon quest, close map -> SetPreferredGamepadInteractTarget)
+		S:HandleButton(DetailsFrame.AbandonButton, true)
+		DetailsFrame.ShareButton:StripTextures() -- strip the Blizz Art around from it
+		S:HandleButton(DetailsFrame.ShareButton, true)
+		S:HandleButton(DetailsFrame.TrackButton, true)
+
+		DetailsFrame.AbandonButton:SetFrameLevel(5)
+		DetailsFrame.ShareButton:SetFrameLevel(5)
+		DetailsFrame.TrackButton:SetFrameLevel(5)
+		DetailsFrame.TrackButton:Width(95)
+
+		BackFrame:StripTextures()
+		BackFrame.BackButton:SetFrameLevel(5)
+		S:HandleButton(BackFrame.BackButton, true)
+	end
 
 	local DetailsBg = DetailsFrame.Bg
 	DetailsBg:ClearAllPoints()
@@ -381,7 +386,9 @@ local function SkinMainline()
 
 	hooksecurefunc(QuestMapFrame.QuestSessionManagement, 'UpdateExecuteCommandAtlases', UpdateExecuteCommandAtlases)
 	hooksecurefunc(_G.QuestSessionManager, 'NotifyDialogShow', NotifyDialogShow)
-	hooksecurefunc('QuestLogQuests_Update', QuestLogQuests)
+	if not E.Forever then -- Forever: skinning pooled quest log buttons on every refresh (e.g. after abandoning a quest) creates frames inside the gamepad-navigated list and taints it
+		hooksecurefunc('QuestLogQuests_Update', QuestLogQuests)
+	end
 
 	local MapLegend = QuestMapFrame.MapLegend
 	MapLegend.TitleText:FontTemplate(nil, 16)
